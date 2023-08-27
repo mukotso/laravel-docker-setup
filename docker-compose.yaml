@@ -1,0 +1,122 @@
+version: "3.1"
+services:
+  # Configures the mysql service
+#  Use the latest mysql version
+  db:
+    image: mysql:latest
+    container_name: database
+    # let the container restart automatically unless it has been manualy stoped
+    restart: unless-stopped
+    # Maps the hosts port 3361 to the exposed port 3306 in the mysql container
+    ports:
+      - 3361:3306
+    # set environment variables for the service
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+      MYSQL_ROOT_PASSWORD:
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    # Attach container to app (network)
+    networks:
+      - applicationnetwork
+
+
+#  Configure redis
+  redis:
+      image: redis:5.0.0-alpine
+      restart: unless-stopped
+      container_name: redis
+      ports:
+          - "6380:6379"
+      networks:
+          - applicationnetwork
+
+#  Configure mailhog configuration
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8030:8025" # Web UI
+      - "1030:1025" # SMTP
+    networks:
+        - applicationnetwork
+
+  #  Configure mailhog configuration
+  beanstalkd:
+    image: schickling/beanstalkd
+    ports:
+      - "11301:11300"
+    networks:
+      - applicationnetwork
+
+
+  app:
+    build:
+      # arguments to for user
+      args:
+        user: mukotso
+        uid: 1000
+      context: ./
+      # Get the Dockerfile to use for image creation from the current directory
+      dockerfile: Dockerfile
+    image: app
+    depends_on:
+      - db
+    container_name: app
+    restart: unless-stopped
+    working_dir: /app
+    # Map the current directory to the /app directory in the container
+    volumes:
+      - ./:/app
+    networks:
+      - applicationnetwork
+
+#Configuration for postgres users
+#  db:
+#    image: postgres
+#    container_name: postgres
+#    environment:
+#      POSTGRES_PASSWORD: myPassword
+#      POSTGRES_DB: laravel
+#    ports:
+#      - 5432:5432
+#    depends_on:
+#      - app
+#    networks:
+#      - applicationnetwork
+
+# configure Adminer - database administration tool for MySQL, PostgreSQL, and SQLite databases
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8081:8080
+    depends_on:
+      - app
+      - db
+    networks:
+      - applicationnetwork
+
+
+  # Configures the nginx web server container
+  nginx:
+    image: nginx:alpine
+    container_name: app-nginx
+    restart: unless-stopped
+    depends_on:
+      - db
+      - app
+    ports:
+      - 8921:80
+    volumes:
+      - ./:/app
+      # Gets the nginx server configuration from the project into the container config (inside docker /nginx folder )
+      - ./docker/nginx:/etc/nginx/conf.d/
+    networks:
+      - applicationnetwork
+
+
+# Create the network to be used by the containers
+networks:
+  applicationnetwork:
+    driver: bridge
